@@ -90,11 +90,24 @@ XmlBeanFactory继承自DefaultListableBeanFactory，DefaultListableBeanFactory�
 
 #### 2.容器的基础XmlBeanFactory
 
-1.配置文件封装
+##### 1.配置文件封装
 
-spring的配置文件读取是通过ClassPathResource进行封装的，在java中，将不同来源的资源抽象成URL，通过注册不同的handler处理不同来源的资源的读取逻辑，一般的handler的类型使用不同的前缀来标识，然而没有默认定义相对Classpath或ServletContext等资源的handler，虽然可以自己注册实现，但需要了解URL实现机制，且URL没有提供一些基本方法，如检查当前资源是否存在，是否可读等，因而Spring对其内部使用到的资源是吸纳了自己的抽象结构，Resource接口来封装底层资源。
+​	spring的配置文件读取是通过ClassPathResource进行封装的，在java中，将不同来源的资源抽象成URL，通过注册不同的handler处理不同来源的资源的读取逻辑，一般的handler的类型使用不同的前缀来标识，然而没有默认定义相对Classpath或ServletContext等资源的handler，虽然可以自己注册实现，但需要了解URL实现机制，且URL没有提供一些基本方法，如检查当前资源是否存在，是否可读等，因而Spring对其内部使用到的资源是吸纳了自己的抽象结构，Resource接口来封装底层资源。
 
 Resource接口抽象了所有Spring内部使用到的资源：File、URL、Classpath等，提供判断当前资源的3个方法：存在性、可读性和是否打开，还提供了不同资源到URL、URI、File类型转换，对不同来源的资源文件都有相应的实现：文件FileSystemResource、Classpath ClasspathResource、URL资源UrlResource等。
 
-2.加载Bean
+##### 2.加载Bean
+
+​	spring初始化有若干种，这里分析使用Resource实例作为参数，
+
+```java
+public XmlBeanFactory(Resource resource) throws BeansException {
+   this(resource, null);
+}
+//parentBeanFactory为父类BeanFactory用于Factory用于合并，可以为空，
+public XmlBeanFactory(Resource resource, BeanFactory parentBeanFactory) throws BeansException {
+		super(parentBeanFactory);
+		this.reader.loadBeanDefinitions(resource);
+	}
+```
 
