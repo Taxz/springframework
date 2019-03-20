@@ -200,4 +200,3 @@ protected void doRegisterBeanDefinitions(Element root) {
    this.delegate = parent;
 }
 ```
-
