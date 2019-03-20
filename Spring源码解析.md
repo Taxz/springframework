@@ -111,3 +111,93 @@ public XmlBeanFactory(Resource resource, BeanFactory parentBeanFactory) throws B
 	}
 ```
 
+​	this.reader.loadBeanDefinitions(resource)才是加载资源的真正实现，super(parentBeanFactory)中ignoreDependencyInterface方法，主要忽略给定接口的自动装配功能，官方解释：自动装配时忽略给定的依赖接口，典型应用是通过其他方式解析application上下文注册依赖，类似于BeanFactory通过BeanFactory进行注入或者ApplicationContext通过ApplicationContextAware进行注入。
+
+loadBeanDefinitions处理过程：
+
+1. 封装资源文件，对Resource使用EncodedResource进行封装，
+2. 获取输入流，从Resource中获取对应的InputStream并构造InputSource。
+3. 通过构造的inputSource实例和Resource实例继续调用doLoadBeanDefinitions
+
+doLoadBeanDefinitions处理步骤：
+
+1. 获取XML文件的验证模式，
+2. 加载XML文件，并得到对应的Document，
+3. 根据返回的Document注册bean信息
+
+2.1 获取XML的验证模式
+
+DTD与XSD
+
+DTD（Document Type Definition）文档类型定义，一种XML约束模式语言和XML文件的验证机制，属于XML文件的组成部分，包括：元素的定义规则，元素间关系的定义规则，元素可使用的属性，可使用的实体或符号规则。
+
+XSD（XML Schemas Definition），描述xml文档的结构，可以用来验证某个XML文档是否符合其要求，使用XSD对xml实例文档进行检验时，需要声明名称空间和XSD文档的存储位置。
+
+Spring检验模式通过判断是否包含DOCTYPE，包含就是DTD，否则是XSD，
+
+2.2 获取Document
+
+经过验证就可以进行加载Document，XmlBeanFactoryReader委托DocumentLoader执行，真正调用的DefaultDocumentLoader  通过SAX解析XML文档，
+
+```java
+public Document loadDocument(InputSource inputSource, EntityResolver entityResolver,
+      ErrorHandler errorHandler, int validationMode, boolean namespaceAware) throws Exception {
+
+   DocumentBuilderFactory factory = createDocumentBuilderFactory(validationMode, namespaceAware);
+   if (logger.isTraceEnabled()) {
+      logger.trace("Using JAXP provider [" + factory.getClass().getName() + "]");
+   }
+   DocumentBuilder builder = createDocumentBuilder(factory, entityResolver, errorHandler);
+   return builder.parse(inputSource);
+}
+```
+
+EntityResolver
+
+​	如果SAX应用程序需要实现自定义处理外部实体，则必须实现此接口并使用setEntityResolve方法向SAX驱动器注册一个实例。对于解析一个XML，SAX需要读取该XML的DTD，默认是通过网络下载，会出现中断、不可用情况，EntityResolver作用是项目本身就可以提供一个如何寻找DTD声明的方法，避免网络寻找相应的声明，需接受两个参数 publicId和systemId。
+
+2.3 解析及注册BeanDefinition
+
+```java
+public int registerBeanDefinitions(Document doc, Resource resource) throws BeanDefinitionStoreException {
+//使用DefaultBeanDefinitionDocumentReader实例化
+   BeanDefinitionDocumentReader documentReader = createBeanDefinitionDocumentReader();
+   int countBefore = getRegistry().getBeanDefinitionCount();
+    //加载及注册bean
+   documentReader.registerBeanDefinitions(doc, createReaderContext(resource));
+   return getRegistry().getBeanDefinitionCount() - countBefore;
+}
+```
+
+在registerBeanDefinitions调用doRegisterBeanDefinitions进行解析
+
+```java
+protected void doRegisterBeanDefinitions(Element root) {
+   BeanDefinitionParserDelegate parent = this.delegate;
+   this.delegate = createDelegate(getReaderContext(), root, parent);
+
+   if (this.delegate.isDefaultNamespace(root)) {
+       //处理profile 配置环境
+      String profileSpec = root.getAttribute(PROFILE_ATTRIBUTE);
+      if (StringUtils.hasText(profileSpec)) {
+         String[] specifiedProfiles = StringUtils.tokenizeToStringArray(
+               profileSpec, BeanDefinitionParserDelegate.MULTI_VALUE_ATTRIBUTE_DELIMITERS);
+            if (!getReaderContext().getEnvironment().acceptsProfiles(specifiedProfiles)) {
+            if (logger.isDebugEnabled()) {
+               logger.debug("Skipped XML bean definition file due to specified profiles [" + profileSpec +
+                     "] not matching: " + getReaderContext().getResource());
+            }
+            return;
+         }
+      }
+   }
+
+   preProcessXml(root);
+   //解析并注册 BeanDefinition
+   parseBeanDefinitions(root, this.delegate);
+   postProcessXml(root);
+
+   this.delegate = parent;
+}
+```
+
