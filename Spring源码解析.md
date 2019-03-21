@@ -200,3 +200,59 @@ protected void doRegisterBeanDefinitions(Element root) {
    this.delegate = parent;
 }
 ```
+默认标签解析
+
+```java
+org.springframework.beans.factory.xml.DefaultBeanDefinitionDocumentReader#parseDefaultElement
+
+private void parseDefaultElement(Element ele, BeanDefinitionParserDelegate delegate) {
+   //对import解析
+   if (delegate.nodeNameEquals(ele, IMPORT_ELEMENT)) {
+      importBeanDefinitionResource(ele);
+   }
+   //对alias解析
+   else if (delegate.nodeNameEquals(ele, ALIAS_ELEMENT)) {
+      processAliasRegistration(ele);
+   }//对bean
+   else if (delegate.nodeNameEquals(ele, BEAN_ELEMENT)) {
+      processBeanDefinition(ele, delegate);
+   }//解析beans
+   else if (delegate.nodeNameEquals(ele, NESTED_BEANS_ELEMENT)) {
+      // recurse
+      doRegisterBeanDefinitions(ele);
+   }
+}
+```
+
+```java
+//对bean 标签进行解析
+protected void processBeanDefinition(Element ele, BeanDefinitionParserDelegate delegate) {
+   //获取bean 设置name属性， 封装成bdHolder对象
+    BeanDefinitionHolder bdHolder = delegate.parseBeanDefinitionElement(ele);
+   if (bdHolder != null) {
+       //解析用户自定义的属性
+      bdHolder = delegate.decorateBeanDefinitionIfRequired(ele, bdHolder);
+      try {
+         // Register the final decorated instance.
+          //根据bean name、别名 注册实例，会检验是否已经存在相同name的实例
+         BeanDefinitionReaderUtils.registerBeanDefinition(bdHolder, getReaderContext().getRegistry());
+      }
+      catch (BeanDefinitionStoreException ex) {
+         getReaderContext().error("Failed to register bean definition with name '" +
+               bdHolder.getBeanName() + "'", ele, ex);
+      }
+      // Send registration event. 通知监听器
+      getReaderContext().fireComponentRegistered(new BeanComponentDefinition(bdHolder));
+   }
+}
+```
+
+大致流程：
+
+1）使用parseBeanDefinitionElement方法进行元素解析，将配置文件中的class、name、id、alias封装在bdHolder实例返回。
+
+2）判断默认的子节点下是否有自定义属性，对自定义标签进行解析。
+
+3）注册bdHolder实例
+
+4）发送注册事件，通知监听器，
