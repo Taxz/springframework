@@ -227,7 +227,7 @@ private void parseDefaultElement(Element ele, BeanDefinitionParserDelegate deleg
 ```java
 //对bean 标签进行解析
 protected void processBeanDefinition(Element ele, BeanDefinitionParserDelegate delegate) {
-   //获取bean 设置name属性， 封装成bdHolder对象
+   //获取name和id，判断bean是否指定beanName，没有则设置beanName属性， 解析其他属性封装到GenericBeanDefinition实例中，获取属性封装成bdHolder对象
     BeanDefinitionHolder bdHolder = delegate.parseBeanDefinitionElement(ele);
    if (bdHolder != null) {
        //解析用户自定义的属性
