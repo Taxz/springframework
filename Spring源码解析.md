@@ -256,3 +256,58 @@ protected void processBeanDefinition(Element ele, BeanDefinitionParserDelegate d
 3）注册bdHolder实例
 
 4）发送注册事件，通知监听器，
+
+**BeanDefinition**接口
+
+BeanDefinition是配置文件**<Bean>**元素标签在容器中的内部表现形式，有着对应的属性关系，实现类有：RootBeanDefinition、ChildBeanDefinition和GenericBeanDefinition，都继承了AbstractBeanDefinition，
+
+分别是对应定义的父<bean>和子<bean>,GenericBeanDefinition为bean配置文件属性定义类。
+
+Spring通过BeanDefinition将配置文件中的<Bean>配置信息转换为容器的内部表示，并将这些BeanDefinition注册到BeanDefinitionRegister中，BeanDefinitionRegister就是spring配置信息的内存数据库，主要以map形式保存，后续操作直接从BeanDefinitionRegister中读取配置信息。类图：
+
+![](E:\works\springframework\img\BeanDefinition.png)
+
+
+
+**注册BeanDefinition**
+
+```java
+public static void registerBeanDefinition(
+      BeanDefinitionHolder definitionHolder, BeanDefinitionRegistry registry)
+      throws BeanDefinitionStoreException {
+
+   // Register bean definition under primary name. 使用bean name做唯一标识注册
+   String beanName = definitionHolder.getBeanName();
+   registry.registerBeanDefinition(beanName, definitionHolder.getBeanDefinition());
+
+   // Register aliases for bean name, if any. 注册所有别名
+   String[] aliases = definitionHolder.getAliases();
+   if (aliases != null) {
+      for (String alias : aliases) {
+         registry.registerAlias(beanName, alias);
+      }
+   }
+}
+```
+
+根据bean name 注册，registerBeanDefinition主要逻辑：
+
+1）对AbstractBeanDefinition进行校验，验证methodOverrides属性。
+
+2）对BeanName已经注册的情况，如果不允许bean的覆盖，则抛出异常，否则覆盖。
+
+3）加入map缓存。
+
+4）清除之前留下的beanName的缓存。
+
+根据别名注册，registry.registerAlias(beanName, alias);
+
+1）alias与beanName相同时，不处理并删除原理的alias，
+
+2）覆盖处理，
+
+3）循环检查，当存在A->B时，若再次出现A->C->B时，则抛出异常。
+
+**通知监听器解析及注册完成**
+
+spring没有对此事件做任何逻辑处理，开发人员可以自行实现逻辑。
