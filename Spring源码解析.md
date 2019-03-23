@@ -125,7 +125,7 @@ doLoadBeanDefinitions处理步骤：
 2. 加载XML文件，并得到对应的Document，
 3. 根据返回的Document注册bean信息
 
-2.1 获取XML的验证模式
+###### 2.1 获取XML的验证模式
 
 DTD与XSD
 
@@ -135,7 +135,7 @@ XSD（XML Schemas Definition），描述xml文档的结构，可以用来验证�
 
 Spring检验模式通过判断是否包含DOCTYPE，包含就是DTD，否则是XSD，
 
-2.2 获取Document
+###### 2.2 获取Document
 
 经过验证就可以进行加载Document，XmlBeanFactoryReader委托DocumentLoader执行，真正调用的DefaultDocumentLoader  通过SAX解析XML文档，
 
@@ -156,7 +156,7 @@ EntityResolver
 
 ​	如果SAX应用程序需要实现自定义处理外部实体，则必须实现此接口并使用setEntityResolve方法向SAX驱动器注册一个实例。对于解析一个XML，SAX需要读取该XML的DTD，默认是通过网络下载，会出现中断、不可用情况，EntityResolver作用是项目本身就可以提供一个如何寻找DTD声明的方法，避免网络寻找相应的声明，需接受两个参数 publicId和systemId。
 
-2.3 解析及注册BeanDefinition
+###### 2.3 解析及注册BeanDefinition
 
 ```java
 public int registerBeanDefinitions(Document doc, Resource resource) throws BeanDefinitionStoreException {
@@ -200,7 +200,7 @@ protected void doRegisterBeanDefinitions(Element root) {
    this.delegate = parent;
 }
 ```
-默认标签解析
+###### 默认标签解析
 
 ```java
 org.springframework.beans.factory.xml.DefaultBeanDefinitionDocumentReader#parseDefaultElement
@@ -311,3 +311,38 @@ public static void registerBeanDefinition(
 **通知监听器解析及注册完成**
 
 spring没有对此事件做任何逻辑处理，开发人员可以自行实现逻辑。
+
+###### 解析自定义标签
+
+自定义标签的使用
+
+1）创建一个需要扩展的组件
+
+2）定义一个XSD文件描述组件内容
+
+3）创建一个类，实现BeanDefinitionParser接口，解析XSD文件中的定义和组件定义
+
+4）创建一个Handler文件，扩展NamespaceHandlerSupport，目的是将组件祖册到spring容器
+
+5）编写Spring.handler和Spring.schemas文件
+
+解析自定义标签
+
+```java
+public BeanDefinition parseCustomElement(Element ele, @Nullable BeanDefinition containingBd) {
+    //获取标签的命名空间
+   String namespaceUri = getNamespaceURI(ele);
+   if (namespaceUri == null) {
+      return null;
+   }
+    //获取自定义标签处理器
+   NamespaceHandler handler = this.readerContext.getNamespaceHandlerResolver().resolve(namespaceUri);
+   if (handler == null) {
+      error("Unable to locate Spring NamespaceHandler for XML schema namespace [" + namespaceUri + "]", ele);
+      return null;
+   }
+    //使用NamespaceHandlerSupport的parse方法，注册BeanDefinitionHolder并发送通知事件，
+   return handler.parse(ele, new ParserContext(this.readerContext, this, containingBd));
+}
+```
+
