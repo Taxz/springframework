@@ -518,6 +518,10 @@ protected <T> T doGetBean(final String name, @Nullable final Class<T> requiredTy
 	}
 ```
 
+梳理下流程图：
+
+![](E:\works\springframework\img\doBean.png)
+
 1)转换对应的beanName
 
 传入的参数可能是别名，也可能是FactoryBean，所以需要进一步解析。
@@ -525,3 +529,4 @@ protected <T> T doGetBean(final String name, @Nullable final Class<T> requiredTy
 - 去除FactoryBean的修饰符，如name=‘&aa’,解析为name='aa'
 - 去指定alias表示的最终beanNa
 
+2）尝试从缓存中加载单例
