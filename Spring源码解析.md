@@ -530,3 +530,30 @@ protected <T> T doGetBean(final String name, @Nullable final Class<T> requiredTy
 - 去指定alias表示的最终beanNa
 
 2）尝试从缓存中加载单例
+
+​	单例在spring容器中只会创建一次，后续直接存缓存中获取，
+
+3）bean的实例化
+
+​	如果从缓存中获取到了bean原始状态，则需要进行实例化，由getObjectForBeanInstance完成
+
+4）原型模式的依赖检查
+
+​	只有在单例情况下才会尝试解决循环依赖，
+
+5）检测parentBeanFactory
+
+​	若当前xml配置文件不包含beanName所对应的配置，只能尝试到父类加载
+
+6）合并为RootBeanDefinition
+
+​	从xml读取的配置存在GenericBeanDefinition中，转换为RootBeanDefinition进行后续操作，若父类不为空，则会合并到父类的属性，
+
+7）实例化依赖
+
+8）针对不同的scope进行bean创建
+
+9）类型转换
+
+将返回的bean转换为requireType所指定的类型
+
