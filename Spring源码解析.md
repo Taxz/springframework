@@ -329,6 +329,7 @@ spring没有对此事件做任何逻辑处理，开发人员可以自行实现�
 解析自定义标签
 
 ```java
+
 public BeanDefinition parseCustomElement(Element ele, @Nullable BeanDefinition containingBd) {
     //获取标签的命名空间
    String namespaceUri = getNamespaceURI(ele);
@@ -353,6 +354,7 @@ public Object getBean(String name) throws BeansException {
    return doGetBean(name, null, null, false);
 }
 
+org.springframework.beans.factory.support.AbstractBeanFactory#doGetBean
 protected <T> T doGetBean(final String name, @Nullable final Class<T> requiredType,
 			@Nullable final Object[] args, boolean typeCheckOnly) throws BeansException {
 		//转换对应的beanName
@@ -533,9 +535,193 @@ protected <T> T doGetBean(final String name, @Nullable final Class<T> requiredTy
 
 ​	单例在spring容器中只会创建一次，后续直接存缓存中获取，
 
+```java
+public Object getSingleton(String beanName) {
+	//true 允许早起依赖
+   return getSingleton(beanName, true);
+}
+
+protected Object getSingleton(String beanName, boolean allowEarlyReference) {
+	//检查缓存(map)中是否存在	
+    Object singletonObject = this.singletonObjects.get(beanName);
+    //缓存中不存在，且该实例正在创建
+		if (singletonObject == null && isSingletonCurrentlyInCreation(beanName)) {
+            //锁定全局变量
+			synchronized (this.singletonObjects) {
+                //该实例正在加载则不处理
+				singletonObject = this.earlySingletonObjects.get(beanName);
+				if (singletonObject == null && allowEarlyReference) {
+                    //当某些方法需要提前初始化的时候则会调用addSingletonFactory方法将对应的ObjectFactory初始化策略存储在singletonFactories中
+					ObjectFactory<?> singletonFactory = this.singletonFactories.get(beanName);
+					if (singletonFactory != null) {
+                        //singletonFactory.getObject() 返回对象
+						singletonObject = singletonFactory.getObject();
+                        //其目的是用来检测循环引用
+						this.earlySingletonObjects.put(beanName, singletonObject);
+                        //earlySingletonObjects与singletonFactories互斥
+						this.singletonFactories.remove(beanName);
+					}
+				}
+			}
+		}
+		return singletonObject;
+	}
+```
+
+```
+singletonObjects：beanName与创建bean实例之间的关系
+singletonFactories：beanName与创建工厂之间的关系
+earlySingletonObjects：保存在beanName和创建bean实例之间的关系，当一个bean被放入后，那么当bean还在创建过程中，就可以通过getBean方法获取，其目的是用来检测循环引用
+registeredSingletons:用来保存当前所有已经注册的bean
+```
+
 3）bean的实例化
 
-​	如果从缓存中获取到了bean原始状态，则需要进行实例化，由getObjectForBeanInstance完成
+​	如果从缓存中获取到了bean原始状态，则需要进行实例化，由getObjectForBeanInstance完成。
+
+```java
+protected Object getObjectForBeanInstance(
+      Object beanInstance, String name, String beanName, @Nullable RootBeanDefinition mbd) {
+
+   // 如果指定的name是工厂前缀(&)
+   if (BeanFactoryUtils.isFactoryDereference(name)) {
+      if (beanInstance instanceof NullBean) {
+         return beanInstance;
+      }
+       //验证不通过
+      if (!(beanInstance instanceof FactoryBean)) {
+         throw new BeanIsNotAFactoryException(transformedBeanName(name), beanInstance.getClass());
+      }
+   }
+
+   //该实例可能是正常的bean或者是FactoryBean
+    //判断用户通过前缀获取直接获取工厂实例
+   if (!(beanInstance instanceof FactoryBean) || BeanFactoryUtils.isFactoryDereference(name)) {
+      return beanInstance;
+   }
+
+    //加载FactoryBean
+   Object object = null;
+   if (mbd == null) {
+       //尝试从缓存中加载
+      object = getCachedObjectForFactoryBean(beanName);
+   }
+   if (object == null) {
+      // Return bean instance from factory. 到这里可以确定实例一定是FactoryBean类型
+      FactoryBean<?> factory = (FactoryBean<?>) beanInstance;
+      // Caches object obtained from FactoryBean if it is a singleton.在所有已经加载的类中检查是否定义beanName
+      if (mbd == null && containsBeanDefinition(beanName)) {
+          //转为RootBeanDefinition，
+         mbd = getMergedLocalBeanDefinition(beanName);
+      }
+       /**
+	 * Return whether this bean definition is 'synthetic', that is,
+	 * not defined by the application itself.
+	 */
+      boolean synthetic = (mbd != null && mbd.isSynthetic());
+      object = getObjectFromFactoryBean(factory, beanName, !synthetic);
+   }
+   return object;
+}
+
+protected Object getObjectFromFactoryBean(FactoryBean<?> factory, String beanName, boolean shouldPostProcess) {
+    //如果是单例模式
+		if (factory.isSingleton() && containsSingleton(beanName)) {
+			synchronized (getSingletonMutex()) {
+				Object object = this.factoryBeanObjectCache.get(beanName);
+				if (object == null) {
+					object = doGetObjectFromFactoryBean(factory, beanName);
+					// Only post-process and store if not put there already during getObject() call above
+					// (e.g. because of circular reference processing triggered by custom getBean calls)
+					Object alreadyThere = this.factoryBeanObjectCache.get(beanName);
+					if (alreadyThere != null) {
+						object = alreadyThere;
+					}
+					else {
+						if (shouldPostProcess) {
+							if (isSingletonCurrentlyInCreation(beanName)) {
+								// Temporarily return non-post-processed object, not storing it yet..
+								return object;
+							}
+							beforeSingletonCreation(beanName);
+							try {
+								object = postProcessObjectFromFactoryBean(object, beanName);
+							}
+							catch (Throwable ex) {
+								throw new BeanCreationException(beanName,
+										"Post-processing of FactoryBean's singleton object failed", ex);
+							}
+							finally {
+								afterSingletonCreation(beanName);
+							}
+						}
+						if (containsSingleton(beanName)) {
+							this.factoryBeanObjectCache.put(beanName, object);
+						}
+					}
+				}
+				return object;
+			}
+		}
+		else {
+			Object object = doGetObjectFromFactoryBean(factory, beanName);
+			if (shouldPostProcess) {
+				try {
+					object = postProcessObjectFromFactoryBean(object, beanName);
+				}
+				catch (Throwable ex) {
+					throw new BeanCreationException(beanName, "Post-processing of FactoryBean's object failed", ex);
+				}
+			}
+			return object;
+		}
+	}
+
+private Object doGetObjectFromFactoryBean(final FactoryBean<?> factory, final String beanName)
+			throws BeanCreationException {
+		Object object;
+		try {
+            //权限验证
+			if (System.getSecurityManager() != null) {
+				AccessControlContext acc = getAccessControlContext();
+				try {
+					object = AccessController.doPrivileged((PrivilegedExceptionAction<Object>) factory::getObject, acc);
+				}
+				catch (PrivilegedActionException pae) {
+					throw pae.getException();
+				}
+			}
+			else {
+                //如果bean声明为factoryBean类型，则提取bean时	并不是FactoryBean,而是对应的getObject返回的bean
+				object = factory.getObject();
+			}
+		}
+		catch (FactoryBeanNotInitializedException ex) {
+			throw new BeanCurrentlyInCreationException(beanName, ex.toString());
+		}
+		catch (Throwable ex) {
+			throw new BeanCreationException(beanName, "FactoryBean threw exception on object creation", ex);
+		}
+
+		// Do not accept a null value for a FactoryBean that's not fully
+		// initialized yet: Many FactoryBeans just return null then.
+		if (object == null) {
+			if (isSingletonCurrentlyInCreation(beanName)) {
+				throw new BeanCurrentlyInCreationException(
+						beanName, "FactoryBean which is currently in creation returned null from getObject");
+			}
+			object = new NullBean();
+		}
+		return object;
+	}
+```
+
+```java
+org.springframework.beans.factory.support.AbstractAutowireCapableBeanFactory#postProcessObjectFromFactoryBean
+protected Object postProcessObjectFromFactoryBean(Object object, String beanName) {
+   return applyBeanPostProcessorsAfterInitialization(object, beanName);
+}
+```
 
 4）原型模式的依赖检查
 
@@ -553,7 +739,108 @@ protected <T> T doGetBean(final String name, @Nullable final Class<T> requiredTy
 
 8）针对不同的scope进行bean创建
 
+```java
+....
+ //单例  加载bean
+if (mbd.isSingleton()) {
+   sharedInstance = getSingleton(beanName, () -> {
+      try {
+         return createBean(beanName, mbd, args);
+      }
+      catch (BeansException ex) {
+         // Explicitly remove instance from singleton cache: It might have been put there
+         // eagerly by the creation process, to allow for circular reference resolution.
+         // Also remove any beans that received a temporary reference to the bean.
+         destroySingleton(beanName);
+         throw ex;
+      }
+   });
+   bean = getObjectForBeanInstance(sharedInstance, name, beanName, mbd);
+}
+
+else if (mbd.isPrototype()) {
+.....
+
+org.springframework.beans.factory.support.DefaultSingletonBeanRegistry#getSingleton(java.lang.String, org.springframework.beans.factory.ObjectFactory<?>)
+public Object getSingleton(String beanName, ObjectFactory<?> singletonFactory) {
+		Assert.notNull(beanName, "Bean name must not be null");
+    //获取全局变量锁
+		synchronized (this.singletonObjects) {
+            //检查是否已经加载过
+			Object singletonObject = this.singletonObjects.get(beanName);
+            //实例化
+			if (singletonObject == null) {
+				if (this.singletonsCurrentlyInDestruction) {
+					throw new BeanCreationNotAllowedException(beanName,
+							"Singleton bean creation not allowed while singletons of this factory are in destruction " +
+							"(Do not request a bean from a BeanFactory in a destroy method implementation!)");
+				}
+				if (logger.isDebugEnabled()) {
+					logger.debug("Creating shared instance of singleton bean '" + beanName + "'");
+				}
+				beforeSingletonCreation(beanName);
+				boolean newSingleton = false;
+				boolean recordSuppressedExceptions = (this.suppressedExceptions == null);
+				if (recordSuppressedExceptions) {
+					this.suppressedExceptions = new LinkedHashSet<>();
+				}
+				try {
+					singletonObject = singletonFactory.getObject();
+					newSingleton = true;
+				}
+				catch (IllegalStateException ex) {
+					// Has the singleton object implicitly appeared in the meantime ->
+					// if yes, proceed with it since the exception indicates that state.
+					singletonObject = this.singletonObjects.get(beanName);
+					if (singletonObject == null) {
+						throw ex;
+					}
+				}
+				catch (BeanCreationException ex) {
+					if (recordSuppressedExceptions) {
+						for (Exception suppressedException : this.suppressedExceptions) {
+							ex.addRelatedCause(suppressedException);
+						}
+					}
+					throw ex;
+				}
+				finally {
+					if (recordSuppressedExceptions) {
+						this.suppressedExceptions = null;
+					}
+					afterSingletonCreation(beanName);
+				}
+				if (newSingleton) {
+                    //加入缓存
+					addSingleton(beanName, singletonObject);
+				}
+			}
+			return singletonObject;
+		}
+	}
+```
+
 9）类型转换
 
 将返回的bean转换为requireType所指定的类型
 
+**FactoryBean**
+
+org.springframework.beans.factory.FactoryBean
+
+```java
+public interface FactoryBean<T> {
+    //返回由FactoryBean创建的bean实例,如果isSingleton返回为true，则将该实例放到spring容器中单实例缓存中
+T getObject() throws Exception;
+    //返回创建bean的类型
+Class<?> getObjectType();
+    //返回由FactoryBean创建bean实例的作用域
+default boolean isSingleton() {
+		return true;
+	}
+}
+```
+
+FactoryBean	对于spring框架来说占用重要的地位，spring自身有70多种实现，他们隐藏了实例化一些复杂bean的细节，给上层应用带来便利，从spring3.0 FactoryBean接口支持泛型。
+
+当配置文件中的<bean>的class属性配置的实现类是FactoryBean时，通过getBean()返回的不是FactoryBean本身，而是FactoryBean#getObject()方法所返回的对象，相当于FactoryBean#getObject()代理了getBean()方法。
