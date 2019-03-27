@@ -745,6 +745,7 @@ protected Object postProcessObjectFromFactoryBean(Object object, String beanName
 if (mbd.isSingleton()) {
    sharedInstance = getSingleton(beanName, () -> {
       try {
+          //作为回调
          return createBean(beanName, mbd, args);
       }
       catch (BeansException ex) {
@@ -778,6 +779,7 @@ public Object getSingleton(String beanName, ObjectFactory<?> singletonFactory) {
 				if (logger.isDebugEnabled()) {
 					logger.debug("Creating shared instance of singleton bean '" + beanName + "'");
 				}
+                //记录加载状态，以便对循环依赖检查
 				beforeSingletonCreation(beanName);
 				boolean newSingleton = false;
 				boolean recordSuppressedExceptions = (this.suppressedExceptions == null);
@@ -785,6 +787,7 @@ public Object getSingleton(String beanName, ObjectFactory<?> singletonFactory) {
 					this.suppressedExceptions = new LinkedHashSet<>();
 				}
 				try {
+                    //初始化  回调
 					singletonObject = singletonFactory.getObject();
 					newSingleton = true;
 				}
@@ -811,7 +814,7 @@ public Object getSingleton(String beanName, ObjectFactory<?> singletonFactory) {
 					afterSingletonCreation(beanName);
 				}
 				if (newSingleton) {
-                    //加入缓存
+                    //将结果加入缓存并删除加载bean过程中记录的辅助状态
 					addSingleton(beanName, singletonObject);
 				}
 			}
@@ -844,3 +847,61 @@ default boolean isSingleton() {
 FactoryBean	对于spring框架来说占用重要的地位，spring自身有70多种实现，他们隐藏了实例化一些复杂bean的细节，给上层应用带来便利，从spring3.0 FactoryBean接口支持泛型。
 
 当配置文件中的<bean>的class属性配置的实现类是FactoryBean时，通过getBean()返回的不是FactoryBean本身，而是FactoryBean#getObject()方法所返回的对象，相当于FactoryBean#getObject()代理了getBean()方法。
+
+**准备创建Bean**
+
+```java
+protected Object createBean(String beanName, RootBeanDefinition mbd, @Nullable Object[] args)
+      throws BeanCreationException {
+
+   if (logger.isTraceEnabled()) {
+      logger.trace("Creating instance of bean '" + beanName + "'");
+   }
+   RootBeanDefinition mbdToUse = mbd;
+//根据设置的class属性或者className来解析Class，并将解析后的类存储在bean定义中，以供进一步使用。
+   Class<?> resolvedClass = resolveBeanClass(mbd, beanName);
+   if (resolvedClass != null && !mbd.hasBeanClass() && mbd.getBeanClassName() != null) {
+      mbdToUse = new RootBeanDefinition(mbd);
+      mbdToUse.setBeanClass(resolvedClass);
+   }
+
+   // Prepare method overrides. 对overrides属性进行标记及验证 将lookup和replace-method同意存放在methodOerrides，在其中的prepareMethodOverride方法，判断是否被重载
+   try {
+      mbdToUse.prepareMethodOverrides();
+   }
+   catch (BeanDefinitionValidationException ex) {
+      throw new BeanDefinitionStoreException(mbdToUse.getResourceDescription(),
+            beanName, "Validation of method overrides failed", ex);
+   }
+
+   try {
+      // Give BeanPostProcessors a chance to return a proxy instead of the target bean instance.
+      Object bean = resolveBeforeInstantiation(beanName, mbdToUse);
+       //短路判断
+      if (bean != null) {
+         return bean;
+      }
+   }
+   catch (Throwable ex) {
+      throw new BeanCreationException(mbdToUse.getResourceDescription(), beanName,
+            "BeanPostProcessor before instantiation of bean failed", ex);
+   }
+
+   try {
+      Object beanInstance = doCreateBean(beanName, mbdToUse, args);
+      if (logger.isTraceEnabled()) {
+         logger.trace("Finished creating instance of bean '" + beanName + "'");
+      }
+      return beanInstance;
+   }
+   catch (BeanCreationException | ImplicitlyAppearedSingletonException ex) {
+      // A previously detected exception with proper bean creation context already,
+      // or illegal singleton state to be communicated up to DefaultSingletonBeanRegistry.
+      throw ex;
+   }
+   catch (Throwable ex) {
+      throw new BeanCreationException(
+            mbdToUse.getResourceDescription(), beanName, "Unexpected exception during bean creation", ex);
+   }
+}
+```
