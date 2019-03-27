@@ -905,3 +905,44 @@ protected Object createBean(String beanName, RootBeanDefinition mbd, @Nullable O
    }
 }
 ```
+
+**解决循环依赖**
+
+spring容器将每一个正在创建的bean标示符放在一个“当前创建的池”中，bean标示符在创建过程中将一直保持在这个池中，因此如果在创建bean的过程中发现自己已经在“当前创建的池”中，则抛出BeanCurrentlyInCreationException异常表示循环依赖。
+
+1.构造器循环依赖
+
+此依赖无法解决，只能抛出异常，
+
+```java
+<bean id="testA" class="...">
+	<constructor-arg index="0" ref="testB"/>
+</bean>
+<bean id="testB" class="...">
+	<constructor-arg index="0" ref="testC"/>
+</bean>
+<bean id="testC" class="...">
+	<constructor-arg index="0" ref="testA"/>
+</bean>
+
+创建过程
+1.spring容器创建testA时，在“当前创建的池”中查找是否有testA，若果没有发现，则继续准备其需要的构造参数“testB”,并将testA放入“当前创建的池”中。
+2.spring容器创建testB时，在“当前创建的池”中查找是否有testB，若果没有发现，则继续准备其需要的构造参数“testC”,并将testB放入“当前创建的池”中。
+3.spring容器创建testC时，在“当前创建的池”中查找是否有testC，若果没有发现，则继续准备其需要的构造参数“testA”,并将testC放入“当前创建的池”中。
+4.此时spring容器创建testA时，发现在“当前创建的池”中查找有testA，则抛出异常
+```
+
+2.setter注入方式构成的循环依赖
+
+spring容器通过提前暴露刚完成构造器注入但未完成其他步骤的bean来实现，但只能解决单例作用域的bean循环依赖。通过提前暴露一个单例工厂方法，从而使其他bean能引用到该bean。
+
+```
+1.spring容器创建单例testA时，首先根据无参构造起创建bean，并暴露一个“ObjectFactory”用于返回一个提前暴露一个创建中的bean，并将testA标示符放到“当前创建的池”中，然后进行setter注入testB。
+2.spring容器创建单例testB时，首先根据无参构造起创建bean，并暴露一个“ObjectFactory”用于返回一个提前暴露一个创建中的bean，并将testB标示符放到“当前创建的池”中，然后进行setter注入testC。
+3.spring容器创建单例testC时，首先根据无参构造起创建bean，并暴露一个“ObjectFactory”用于返回一个提前暴露一个创建中的bean，并将testC标示符放到“当前创建的池”中，然后进行setter注入testA,进行注入testA时，由于提前暴露了“ObjectFactory”工厂，从而返回提前暴露一个创建中的bean。
+4.最后在依赖注入testB和testA，完成setter注入
+```
+
+3.prototype范围的依赖处理
+
+无法完成依赖注入，因为spring容器不进行prototype的作用域缓存，无法提前暴露创建中的bean
