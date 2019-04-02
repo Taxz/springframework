@@ -1077,3 +1077,75 @@ protected Object doCreateBean(final String beanName, final RootBeanDefinition mb
    return exposedObject;
 }
 ```
+
+```java
+protected BeanWrapper createBeanInstance(String beanName, RootBeanDefinition mbd, @Nullable Object[] args) {
+   // Make sure bean class is actually resolved at this point.
+   Class<?> beanClass = resolveBeanClass(mbd, beanName);
+
+   if (beanClass != null && !Modifier.isPublic(beanClass.getModifiers()) && !mbd.isNonPublicAccessAllowed()) {
+      throw new BeanCreationException(mbd.getResourceDescription(), beanName,
+            "Bean class isn't public, and non-public access not allowed: " + beanClass.getName());
+   }
+   /**
+	 * Return a callback for creating an instance of the bean, if any.
+	 * @since 5.0
+	 */
+   Supplier<?> instanceSupplier = mbd.getInstanceSupplier();
+   if (instanceSupplier != null) {
+       /**
+         * Obtain a bean instance from the given supplier.
+         */
+      return obtainFromSupplier(instanceSupplier, beanName);
+   }
+
+    //不为空则使用工厂方法初始化
+   if (mbd.getFactoryMethodName() != null) {
+      return instantiateUsingFactoryMethod(beanName, mbd, args);
+   }
+
+   // Shortcut when re-creating the same bean...
+   boolean resolved = false;
+   boolean autowireNecessary = false;
+   if (args == null) {
+      synchronized (mbd.constructorArgumentLock) {
+         if (mbd.resolvedConstructorOrFactoryMethod != null) {
+            resolved = true;
+            autowireNecessary = mbd.constructorArgumentsResolved;
+         }
+      }
+   }
+   if (resolved) {
+      if (autowireNecessary) {
+         return autowireConstructor(beanName, mbd, null, null);
+      }
+      else {
+         return instantiateBean(beanName, mbd);
+      }
+   }
+
+   // Candidate constructors for autowiring?
+   Constructor<?>[] ctors = determineConstructorsFromBeanPostProcessors(beanClass, beanName);
+   if (ctors != null || mbd.getResolvedAutowireMode() == AUTOWIRE_CONSTRUCTOR ||
+         mbd.hasConstructorArgumentValues() || !ObjectUtils.isEmpty(args)) {
+      return autowireConstructor(beanName, mbd, ctors, args);
+   }
+
+   /**
+	 * Determine preferred constructors to use for default construction, if any.
+	 * Constructor arguments will be autowired if necessary.
+	 * @return one or more preferred constructors, or {@code null} if none
+	 * (in which case the regular no-arg default constructor will be called)
+	 * @since 5.1
+	 */ 
+   ctors = mbd.getPreferredConstructors();
+   if (ctors != null) {
+       //构造函数自动注入
+      return autowireConstructor(beanName, mbd, ctors, null);
+   }
+
+   // No special handling: simply use no-arg constructor.
+    //使用默认构造函数
+   return instantiateBean(beanName, mbd);
+}
+```
