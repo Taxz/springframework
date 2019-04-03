@@ -1149,3 +1149,189 @@ protected BeanWrapper createBeanInstance(String beanName, RootBeanDefinition mbd
    return instantiateBean(beanName, mbd);
 }
 ```
+
+```java
+protected BeanWrapper autowireConstructor(
+      String beanName, RootBeanDefinition mbd, @Nullable Constructor<?>[] ctors, @Nullable Object[] explicitArgs) {
+
+   return new ConstructorResolver(this).autowireConstructor(beanName, mbd, ctors, explicitArgs);
+}
+```
+
+```java
+//构造函数自动注入，按照提供的构造函数参数方式
+//如果指定了显式构造函数参数值，
+//用bean工厂中的bean匹配所有剩余的参数。
+//这对应于构造函数注入:在这种模式下，是一个Spring
+//bean factory能够托管基于构造函数的组件依赖性解析。
+public BeanWrapper autowireConstructor(String beanName, RootBeanDefinition mbd,
+      @Nullable Constructor<?>[] chosenCtors, @Nullable Object[] explicitArgs) {
+
+   BeanWrapperImpl bw = new BeanWrapperImpl();
+   this.beanFactory.initBeanWrapper(bw);
+
+   Constructor<?> constructorToUse = null;
+   ArgumentsHolder argsHolderToUse = null;
+   Object[] argsToUse = null;
+
+   if (explicitArgs != null) {
+      argsToUse = explicitArgs;
+   }
+   else {
+      Object[] argsToResolve = null;
+      synchronized (mbd.constructorArgumentLock) {
+         constructorToUse = (Constructor<?>) mbd.resolvedConstructorOrFactoryMethod;
+         if (constructorToUse != null && mbd.constructorArgumentsResolved) {
+            // Found a cached constructor...
+            argsToUse = mbd.resolvedConstructorArguments;
+            if (argsToUse == null) {
+               argsToResolve = mbd.preparedConstructorArguments;
+            }
+         }
+      }
+      if (argsToResolve != null) {
+         argsToUse = resolvePreparedArguments(beanName, mbd, bw, constructorToUse, argsToResolve, true);
+      }
+   }
+
+   if (constructorToUse == null || argsToUse == null) {
+      // Take specified constructors, if any.
+      Constructor<?>[] candidates = chosenCtors;
+      if (candidates == null) {
+         Class<?> beanClass = mbd.getBeanClass();
+         try {
+            candidates = (mbd.isNonPublicAccessAllowed() ?
+                  beanClass.getDeclaredConstructors() : beanClass.getConstructors());
+         }
+         catch (Throwable ex) {
+            throw new BeanCreationException(mbd.getResourceDescription(), beanName,
+                  "Resolution of declared constructors on bean Class [" + beanClass.getName() +
+                  "] from ClassLoader [" + beanClass.getClassLoader() + "] failed", ex);
+         }
+      }
+
+      if (candidates.length == 1 && explicitArgs == null && !mbd.hasConstructorArgumentValues()) {
+         Constructor<?> uniqueCandidate = candidates[0];
+         if (uniqueCandidate.getParameterCount() == 0) {
+            synchronized (mbd.constructorArgumentLock) {
+               mbd.resolvedConstructorOrFactoryMethod = uniqueCandidate;
+               mbd.constructorArgumentsResolved = true;
+               mbd.resolvedConstructorArguments = EMPTY_ARGS;
+            }
+            bw.setBeanInstance(instantiate(beanName, mbd, uniqueCandidate, EMPTY_ARGS));
+            return bw;
+         }
+      }
+
+      // Need to resolve the constructor.
+      boolean autowiring = (chosenCtors != null ||
+            mbd.getResolvedAutowireMode() == AutowireCapableBeanFactory.AUTOWIRE_CONSTRUCTOR);
+      ConstructorArgumentValues resolvedValues = null;
+
+      int minNrOfArgs;
+      if (explicitArgs != null) {
+         minNrOfArgs = explicitArgs.length;
+      }
+      else {
+         ConstructorArgumentValues cargs = mbd.getConstructorArgumentValues();
+         resolvedValues = new ConstructorArgumentValues();
+         minNrOfArgs = resolveConstructorArguments(beanName, mbd, bw, cargs, resolvedValues);
+      }
+
+      AutowireUtils.sortConstructors(candidates);
+      int minTypeDiffWeight = Integer.MAX_VALUE;
+      Set<Constructor<?>> ambiguousConstructors = null;
+      LinkedList<UnsatisfiedDependencyException> causes = null;
+
+      for (Constructor<?> candidate : candidates) {
+         Class<?>[] paramTypes = candidate.getParameterTypes();
+
+         if (constructorToUse != null && argsToUse.length > paramTypes.length) {
+            // Already found greedy constructor that can be satisfied ->
+            // do not look any further, there are only less greedy constructors left.
+            break;
+         }
+         if (paramTypes.length < minNrOfArgs) {
+            continue;
+         }
+
+         ArgumentsHolder argsHolder;
+         if (resolvedValues != null) {
+            try {
+               String[] paramNames = ConstructorPropertiesChecker.evaluate(candidate, paramTypes.length);
+               if (paramNames == null) {
+                  ParameterNameDiscoverer pnd = this.beanFactory.getParameterNameDiscoverer();
+                  if (pnd != null) {
+                     paramNames = pnd.getParameterNames(candidate);
+                  }
+               }
+               argsHolder = createArgumentArray(beanName, mbd, resolvedValues, bw, paramTypes, paramNames,
+                     getUserDeclaredConstructor(candidate), autowiring, candidates.length == 1);
+            }
+            catch (UnsatisfiedDependencyException ex) {
+               if (logger.isTraceEnabled()) {
+                  logger.trace("Ignoring constructor [" + candidate + "] of bean '" + beanName + "': " + ex);
+               }
+               // Swallow and try next constructor.
+               if (causes == null) {
+                  causes = new LinkedList<>();
+               }
+               causes.add(ex);
+               continue;
+            }
+         }
+         else {
+            // Explicit arguments given -> arguments length must match exactly.
+            if (paramTypes.length != explicitArgs.length) {
+               continue;
+            }
+            argsHolder = new ArgumentsHolder(explicitArgs);
+         }
+
+         int typeDiffWeight = (mbd.isLenientConstructorResolution() ?
+               argsHolder.getTypeDifferenceWeight(paramTypes) : argsHolder.getAssignabilityWeight(paramTypes));
+         // Choose this constructor if it represents the closest match.
+         if (typeDiffWeight < minTypeDiffWeight) {
+            constructorToUse = candidate;
+            argsHolderToUse = argsHolder;
+            argsToUse = argsHolder.arguments;
+            minTypeDiffWeight = typeDiffWeight;
+            ambiguousConstructors = null;
+         }
+         else if (constructorToUse != null && typeDiffWeight == minTypeDiffWeight) {
+            if (ambiguousConstructors == null) {
+               ambiguousConstructors = new LinkedHashSet<>();
+               ambiguousConstructors.add(constructorToUse);
+            }
+            ambiguousConstructors.add(candidate);
+         }
+      }
+
+      if (constructorToUse == null) {
+         if (causes != null) {
+            UnsatisfiedDependencyException ex = causes.removeLast();
+            for (Exception cause : causes) {
+               this.beanFactory.onSuppressedException(cause);
+            }
+            throw ex;
+         }
+         throw new BeanCreationException(mbd.getResourceDescription(), beanName,
+               "Could not resolve matching constructor " +
+               "(hint: specify index/type/name arguments for simple parameters to avoid type ambiguities)");
+      }
+      else if (ambiguousConstructors != null && !mbd.isLenientConstructorResolution()) {
+         throw new BeanCreationException(mbd.getResourceDescription(), beanName,
+               "Ambiguous constructor matches found in bean '" + beanName + "' " +
+               "(hint: specify index/type/name arguments for simple parameters to avoid type ambiguities): " +
+               ambiguousConstructors);
+      }
+
+      if (explicitArgs == null) {
+         argsHolderToUse.storeCache(mbd, constructorToUse);
+      }
+   }
+
+   bw.setBeanInstance(instantiate(beanName, mbd, constructorToUse, argsToUse));
+   return bw;
+}
+```
