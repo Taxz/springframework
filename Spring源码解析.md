@@ -1348,3 +1348,82 @@ public BeanWrapper autowireConstructor(String beanName, RootBeanDefinition mbd,
    return bw;
 }
 ```
+## Spring 事务管理
+
+#### Spring事务管理接口
+
+`platformTransactionManager`:事务管理器
+
+`TransactionDefinition`：事务定义信息对象，包含事务隔离级别、传播行为、超时、只读、回滚规则。
+
+`TransactionStatus`：事务运行状态
+
+**所谓事务管理，其实就是“按照给定的事务规则来执行提交或者回滚操作”。** 
+
+
+
+#### platformTransactionManager接介绍
+
+spring并不是直接管理事务，而是提供了多种事务管理器，他们讲事务管理的职责委托给jpa、mybatis等平台框架的事务来实现，spring事务管理器的接口是**org.springframework.transaction.PlatformTransactionManager**  ,通过这个接口，spring为各个平台提供对应的事务管理器，但是具体的实现由各平台实现。
+
+代码：
+
+```java
+Public interface PlatformTransactionManager()...{  
+    // Return a currently active transaction or create a new one, according to the specified propagation behavior（根据指定的传播行为，返回当前活动的事务或创建一个新事务。）
+    TransactionStatus getTransaction(TransactionDefinition definition) throws TransactionException; 
+    // Commit the given transaction, with regard to its status（使用事务目前的状态提交事务）
+    Void commit(TransactionStatus status) throws TransactionException;  
+    // Perform a rollback of the given transaction（对执行的事务进行回滚）
+    Void rollback(TransactionStatus status) throws TransactionException;  
+    } 
+```
+
+
+
+#### TransactionDefinition接口介绍
+
+事务管理器接口，通过getTransaction(TransactionDefinition definition)方法来得到一个参数，这个方法里面的参数就是TransactionDefinition类，该类定义了基本的事务属性：隔离级别、传播行为、回滚规则、是否只读、事务超时。
+
+接口方法
+
+```java
+public interface TransactionDefinition {
+    // 返回事务的传播行为
+    int getPropagationBehavior(); 
+    // 返回事务的隔离级别，事务管理器根据它来控制另外一个事务可以看到本事务内的哪些数据
+    int getIsolationLevel(); 
+    // 返回事务必须在多少秒内完成
+    //返回事务的名字
+    String getName()；
+    int getTimeout();  
+    // 返回是否优化为只读事务。
+    boolean isReadOnly();
+} 
+```
+
+事务的隔离级别（一个事务可能受其他并发事务影响的程度）
+
+并发带来的问题：
+
+脏读：当一个事务正在访问数据并且数据进行了修改，而这种修改还没有提交到数据库，这是另外一个事务也访问了这个数据，然后使用了这个数据，因为这个数据没有提交，那么另外一个数据读到的这个数据是‘脏数据’，依据该数据进行的操作有可能是不正确的。
+
+丢失修改：指在一个事务读取一个数据时，另外一个事务也访问了该数据，那么在第一个事务修改了该数据后，另外一个事务也修改了该数据，导致第一个事务的修改结果丢失。
+
+不可重复读：一个事务多次读同一个数据时，在这个事务还没有结束时，另外一个事务获取了该数据，那么在第一个事务的两次读数据之间，由于第二次事务的修改导致了第一个事务两次事务读取到的数据可能不太一样。
+
+幻读：与不可重复读类似，他发生在于一个事务读取几行数据，接着另外一个事务插入了一些数据时，在随后的读取中，第一个事务会发现一些原本不存在的记录。
+
+隔离级别：
+
+TransactionDefinition 接口中定义了五个表示隔离级别的常量： 
+
+`TransactionDefinition.ISOLATION_DEFAULT`: 使用后端数据库默认的隔离级别，如mysql是REPEATABLE_READ ，Oracle是READ_COMMITTED 级别。
+
+`TransactionDefinition.ISOLATION_READ_UNCOMMITTED`: 最低的隔离级别，允许读取尚未提交的数据变更，可能会导致脏读，幻读或不可重复读。
+
+`TransactionDefinition.ISOLATION_READ_COMMITTED`:允许事务读取已经提交的数据，可以阻止脏读。
+
+`TransactionDefinition.ISOLATION_REPEATABLE_READ`: 在同一事务中，对数据的多次读取结果都是一致的，除非数据被本身事务修改，无法避免幻读。
+
+`TransactionDefinition.ISOLATION_SERIALIZABLE:`最高级别的事务隔离级别，完全服从ACID特性，所有事务依次挨个执行，避免事务之间的干扰，可以避免脏读、幻读、不可重复。	但是严重影响性能。
