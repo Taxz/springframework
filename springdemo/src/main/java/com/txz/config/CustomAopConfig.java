@@ -106,8 +106,8 @@ import org.springframework.context.annotation.EnableAspectJAutoProxy;
  * 								拿到所有后置处理器，如果是InstantiationAwareBeanPostProcessor;
  * 								就执行postProcessBeforeInstantiation
  * 							if (bean != null) {
-bean = applyBeanPostProcessorsAfterInitialization(bean, beanName);
-}
+                                 bean = applyBeanPostProcessorsAfterInitialization(bean, beanName);
+                            }
  *
  * 					2）、doCreateBean(beanName, mbdToUse, args);真正的去创建一个bean实例；和3.6流程一样；
  * 					3）、

@@ -40,9 +40,9 @@ import org.springframework.context.annotation.Configuration;
  * populateBean(beanName, mbd, instanceWrapper);给bean进行属性赋值
  * initializeBean
  * {
- * applyBeanPostProcessorsBeforeInitialization(wrappedBean, beanName);
- * invokeInitMethods(beanName, wrappedBean, mbd);执行自定义初始化
- * applyBeanPostProcessorsAfterInitialization(wrappedBean, beanName);
+     * applyBeanPostProcessorsBeforeInitialization(wrappedBean, beanName);
+     * invokeInitMethods(beanName, wrappedBean, mbd);执行自定义初始化
+     * applyBeanPostProcessorsAfterInitialization(wrappedBean, beanName);
  *}
  *
  *
@@ -62,6 +62,17 @@ import org.springframework.context.annotation.Configuration;
  * Spring底层对 BeanPostProcessor 的使用；
  * 		bean赋值，注入其他组件，@Autowired，生命周期注解功能，@Async,xxx BeanPostProcessor;
  *
+ *------------------------------------------------------------------------------
+ * BeanFactoryPostProcessor接口
+ *      postProcessBeanFactory(ConfigurableListableBeanFactory beanFactory)
+ *      在创建bean实例之前可以修改bean定义属性
+ *
+ *
+ *  BeanPostProcessor接口
+ *      Object postProcessBeforeInitialization(Object bean, String beanName)
+ *      在bean的初始化方法执行前调用
+ *      Object postProcessAfterInitialization(Object bean, String beanName)
+ *      在bean的初始化方法执行后调用
  */
 @ComponentScan("com.txz")
 @Configuration
