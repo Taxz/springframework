@@ -92,7 +92,7 @@ import org.springframework.context.annotation.EnableAspectJAutoProxy;
  * 			1）、遍历获取容器中所有的Bean，依次创建对象getBean(beanName);
  * 				getBean->doGetBean()->getSingleton()->
  * 			2）、创建bean
- * 				【AnnotationAwareAspectJAutoProxyCreator在所有bean创建之前会有一个拦截，InstantiationAwareBeanPostProcessor，会调用postProcessBeforeInstantiation()】
+ * 				【AnnotationAwareAspectJAutoProxyCreator在所有bean创建之前会有一个拦截(其实是判断是否实现InstantiationAwareBeanPostProcessor接口,)，InstantiationAwareBeanPostProcessor，会调用postProcessBeforeInstantiation()】
  * 				1）、先从缓存中获取当前bean，如果能获取到，说明bean是之前被创建过的，直接使用，否则再创建；
  * 					只要创建好的Bean都会被缓存起来
  * 				2）、createBean（）;创建bean；
