@@ -3,6 +3,7 @@ package com.txz.config;
 import com.txz.aop.SecretaryAspect;
 import com.txz.bean.Boss;
 import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.ComponentScan;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.EnableAspectJAutoProxy;
 
@@ -190,6 +191,7 @@ import org.springframework.context.annotation.EnableAspectJAutoProxy;
  *
  *
  */
+@ComponentScan("com.txz")
 @EnableAspectJAutoProxy
 @Configuration
 public class CustomAopConfig {
